@@ -2044,6 +2044,7 @@ class PolyLineROI(ROI):
         p.lineTo(self.handles[0]['item'].pos())
         return p
 
+
     def getArrayRegion(self, data, img, axes=(0,1), **kwds):
         """
         Return the result of ROI.getArrayRegion(), masked by the shape of the 
@@ -2052,12 +2053,14 @@ class PolyLineROI(ROI):
         br = self.boundingRect()
         if br.width() > 1000:
             raise Exception()
-        sliced = ROI.getArrayRegion(self, data, img, axes=axes, fromBoundingRect=True, **kwds)
-        
+        sliced, coords = ROI.getArrayRegion(self, data, img, axes=axes, fromBoundingRect=True, **kwds)
+        #print len(sliced), axes[0], axes[1]
         if img.axisOrder == 'col-major':
             mask = self.renderShapeMask(sliced.shape[axes[0]], sliced.shape[axes[1]])
+            #mask = self.renderShapeMask(sliced[axes[0]-1], sliced[axes[1]-1])
         else:
             mask = self.renderShapeMask(sliced.shape[axes[1]], sliced.shape[axes[0]])
+            #mask = self.renderShapeMask(sliced[axes[1]-1], sliced[axes[0]-1])
             mask = mask.T
             
         # reshape mask to ensure it is applied to the correct data axes
@@ -2066,7 +2069,7 @@ class PolyLineROI(ROI):
         shape[axes[1]] = sliced.shape[axes[1]]
         mask = mask.reshape(shape)
 
-        return sliced * mask
+        return sliced * mask, coords
 
     def setPen(self, *args, **kwds):
         ROI.setPen(self, *args, **kwds)

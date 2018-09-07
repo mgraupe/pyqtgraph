@@ -30,12 +30,15 @@ from ..graphicsItems.ROI import *
 from ..graphicsItems.LinearRegionItem import *
 from ..graphicsItems.InfiniteLine import *
 from ..graphicsItems.ViewBox import *
+from ..graphicsItems.ViewBox import *
 from ..graphicsItems.VTickGroup import VTickGroup
 from ..graphicsItems.GradientEditorItem import addGradientListToDocstring
 from .. import ptime as ptime
 from .. import debug as debug
 from ..SignalProxy import SignalProxy
 from .. import getConfigOption
+from .. import functions as functions
+from .. import Point as Point
 
 try:
     from bottleneck import nanmin, nanmax
@@ -154,16 +157,17 @@ class ImageView(QtGui.QWidget):
         
         self.ui.normGroup.hide()
 
-        self.roi = PlotROI(10)
-        self.roi.setZValue(20)
-        self.view.addItem(self.roi)
-        self.roi.hide()
-        self.normRoi = PlotROI(10)
-        self.normRoi.setPen('y')
-        self.normRoi.setZValue(20)
-        self.view.addItem(self.normRoi)
-        self.normRoi.hide()
-        self.roiCurves = []
+        self.ROIs = []
+        #self.roi = PlotROI(10)
+        #self.roi.setZValue(20)
+        #self.view.addItem(self.roi)
+        #self.roi.hide()
+        #self.normRoi = PlotROI(10)
+        #self.normRoi.setPen('y')
+        #self.normRoi.setZValue(20)
+        #self.view.addItem(self.normRoi)
+        #self.normRoi.hide()
+        #self.roiCurves = []
         self.timeLine = InfiniteLine(0, movable=True, markers=[('^', 0), ('v', 1)])
         self.timeLine.setPen((255, 255, 0, 200))
         self.timeLine.setZValue(1)
@@ -192,8 +196,8 @@ class ImageView(QtGui.QWidget):
             setattr(self, fn, getattr(self.ui.histogram, fn))
 
         self.timeLine.sigPositionChanged.connect(self.timeLineChanged)
-        self.ui.roiBtn.clicked.connect(self.roiClicked)
-        self.roi.sigRegionChanged.connect(self.roiChanged)
+        #self.ui.roiBtn.clicked.connect(self.roiClicked)
+        #self.roi.sigRegionChanged.connect(self.roiChanged)
         #self.ui.normBtn.toggled.connect(self.normToggled)
         self.ui.menuBtn.clicked.connect(self.menuClicked)
         self.ui.normDivideRadio.clicked.connect(self.normRadioChanged)
@@ -203,16 +207,19 @@ class ImageView(QtGui.QWidget):
         self.ui.normFrameCheck.clicked.connect(self.updateNorm)
         self.ui.normTimeRangeCheck.clicked.connect(self.updateNorm)
         self.playTimer.timeout.connect(self.timeout)
+
         
         self.normProxy = SignalProxy(self.normRgn.sigRegionChanged, slot=self.updateNorm)
-        self.normRoi.sigRegionChangeFinished.connect(self.updateNorm)
+        #self.normRoi.sigRegionChangeFinished.connect(self.updateNorm)
         
         self.ui.roiPlot.registerPlot(self.name + '_ROI')
         self.view.register(self.name)
+        self.scene.sigMouseClicked.connect(self.mouseClickedRois)
         
         self.noRepeatKeys = [QtCore.Qt.Key_Right, QtCore.Qt.Key_Left, QtCore.Qt.Key_Up, QtCore.Qt.Key_Down, QtCore.Qt.Key_PageUp, QtCore.Qt.Key_PageDown]
         
-        self.roiClicked() ## initialize roi plot to correct shape / visibility
+        #self.roiClicked() ## initialize roi plot to correct shape / visibility
+        self.showRoiPlot()
 
     def setImage(self, img, autoRange=True, autoLevels=True, levels=None, axes=None, xvals=None, pos=None, scale=None, transform=None, autoHistogramRange=True, levelMode=None):
         """
@@ -360,7 +367,8 @@ class ImageView(QtGui.QWidget):
 
         if autoRange:
             self.autoRange()
-        self.roiClicked()
+        #self.roiClicked()
+        self.showRoiPlot()
 
         profiler()
 
@@ -418,7 +426,61 @@ class ImageView(QtGui.QWidget):
         del self.imageDisp
         super(ImageView, self).close()
         self.setParent(None)
-        
+
+    def mouseClickedRois(self,evt):
+        posClick = evt.pos()
+        # print posClick
+        if evt.buttons() == QtCore.Qt.RightButton:
+            pass  # removeROI(roi)
+        hover = False
+        for i, r in enumerate(self.ROIs):
+            if r['roi'].mouseHovering:
+                hover = True
+                break
+        for i, r in enumerate(self.ROIs):
+            if r['roi'].freeHandleMoved:
+                print 'freehandlemoved yes'
+
+        print hover, self.view.sceneBoundingRect().contains(posClick)
+        if (evt.buttons() == QtCore.Qt.MiddleButton) and (self.view.sceneBoundingRect().contains(posClick)) and (not hover):
+            print 'yes'
+            posClick= evt.pos()
+            mousePointC = self.view.mapSceneToView(posClick)
+            print 'mousePointC : ', mousePointC
+            self.addROI(mousePointC)
+
+    def addROI(self,loc):
+        pen = functions.mkPen(functions.intColor(len(self.ROIs)))
+        center = loc
+        size = [20, 20]
+        #pts = [center, center + Point(0, size[1]), center + Point(size[1], size[0]), center + Point(size[0], 0)]
+        pts = [[0,0],[0,10],[10,10],[10,0]]
+        #roi = RectROI(loc,size,pen=pen, removable=True) #PolyLineROI(pts, pen=pen, closed=True, removable=True)
+        roi = PolyLineROI(pts, pos=loc,pen=pen, closed=True, removable=True)
+        #roi.setZValue(20)
+        self.view.addItem(roi)
+        # plot = self.roiPlot.plot(pen=pen)
+        self.ROIs.append({'roi': roi, 'pen': pen, 'vals': [],'origin': center, 'times': [], 'roiCurves': []})
+        roi.sigRemoveRequested.connect(self.removeROI)
+        roi.sigRegionChanged.connect(self.roiChanged)
+        self.roiChanged()
+
+    def removeROI(self,roi):
+        # for roi in rois:
+        # print 'test'
+        self.view.removeItem(roi)
+        roi.sigRemoveRequested.disconnect(self.removeROI)
+        roi.sigRegionChanged.disconnect(self.roiChanged)
+        for i, r in enumerate(self.ROIs):
+            if r['roi'] is roi:
+                for i in range(len(r['roiCurves'])):
+                    c = r['roiCurves'].pop()
+                    c.scene().removeItem(c)
+                # roiPlot.removeItem(r['plot'])
+                self.ROIs.remove(r)
+
+                break
+
     def keyPressEvent(self, ev):
         #print ev.key()
         if ev.key() == QtCore.Qt.Key_Space:
@@ -522,10 +584,10 @@ class ImageView(QtGui.QWidget):
         else:
             self.normRgn.hide()
         
-        if self.ui.normROICheck.isChecked():
-            self.normRoi.show()
-        else:
-            self.normRoi.hide()
+        #if self.ui.normROICheck.isChecked():
+        #    self.normRoi.show()
+        #else:
+        #    self.normRoi.hide()
         
         if not self.ui.normOffRadio.isChecked():
             self.imageDisp = None
@@ -542,23 +604,63 @@ class ImageView(QtGui.QWidget):
     def hasTimeAxis(self):
         return 't' in self.axes and self.axes['t'] is not None
 
+    def showRoiPlot(self):
+        #showRoiPlot = False
+        #if self.ui.roiBtn.isChecked():
+        showRoiPlot = True
+        #self.roi.show()
+        # self.ui.roiPlot.show()
+        self.ui.roiPlot.setMouseEnabled(True, True)
+        self.ui.splitter.setSizes([self.height() * 0.5, self.height() * 0.5])
+        #for c in self.roiCurves:
+        #    #c.show()
+        for i,r in enumerate(self.ROIs):
+            r['roiCurves'].show()
+        self.roiChanged()
+        self.ui.roiPlot.showAxis('left')
+        #else:
+        #    self.roi.hide()
+        #    self.ui.roiPlot.setMouseEnabled(False, False)
+        #    for c in self.roiCurves:
+        #        c.hide()
+        #    self.ui.roiPlot.hideAxis('left')
+
+        if self.hasTimeAxis():
+            showRoiPlot = True
+            mn = self.tVals.min()
+            mx = self.tVals.max()
+            self.ui.roiPlot.setXRange(mn, mx, padding=0.01)
+            self.timeLine.show()
+            self.timeLine.setBounds([mn, mx])
+            self.ui.roiPlot.show()
+            if not self.ui.roiBtn.isChecked():
+                self.ui.splitter.setSizes([self.height() - 35, 35])
+        else:
+            self.timeLine.hide()  # self.ui.roiPlot.hide()
+
+        self.ui.roiPlot.setVisible(showRoiPlot)
+
     def roiClicked(self):
         showRoiPlot = False
         if self.ui.roiBtn.isChecked():
             showRoiPlot = True
-            self.roi.show()
+            #self.roi.show()
             #self.ui.roiPlot.show()
             self.ui.roiPlot.setMouseEnabled(True, True)
-            self.ui.splitter.setSizes([self.height()*0.6, self.height()*0.4])
-            for c in self.roiCurves:
-                c.show()
+            self.ui.splitter.setSizes([self.height()*0.7, self.height()*0.3])
+            for i, r in enumerate(self.ROIs):
+                r['roiCurves'].show()
+            #for c in self.roiCurves:
+            #    c.show()
             self.roiChanged()
             self.ui.roiPlot.showAxis('left')
         else:
             self.roi.hide()
             self.ui.roiPlot.setMouseEnabled(False, False)
-            for c in self.roiCurves:
-                c.hide()
+            for i, r in enumerate(self.ROIs):
+                r['roiCurves'].hide()
+            #for c in self.roiCurves:
+            #    c.hide()
             self.ui.roiPlot.hideAxis('left')
             
         if self.hasTimeAxis():
@@ -586,43 +688,61 @@ class ImageView(QtGui.QWidget):
         # Extract image data from ROI
         axes = (self.axes['x'], self.axes['y'])
 
-        data, coords = self.roi.getArrayRegion(image.view(np.ndarray), self.imageItem, axes, returnMappedCoords=True)
-        if data is None:
-            return
+        for i, r in enumerate(self.ROIs):
+            #if r['roi'] is roi:
+            #    # roiPlot.removeItem(r['plot'])
+            #    self.ROIs.remove(r)
+            #    break
+            data, coords = r['roi'].getArrayRegion(image.view(np.ndarray), self.imageItem, axes, returnMappedCoords=True)
+            #data = r['roi'].getArrayRegion(image.view(np.ndarray), self.imageItem, axes, returnMappedCoords=True)
+            if data is None:
+                return
+            #print 'coords :', coords
+            # Convert extracted data into 1D plot data
+            if self.axes['t'] is None:
+                # Average across y-axis of ROI
+                data = data.mean(axis=axes[1])
+                coords = coords[:,:,0] - coords[:,0:1,0]
+                xvals = (coords**2).sum(axis=0) ** 0.5
 
-        # Convert extracted data into 1D plot data
-        if self.axes['t'] is None:
-            # Average across y-axis of ROI
-            data = data.mean(axis=axes[1])
-            coords = coords[:,:,0] - coords[:,0:1,0]
-            xvals = (coords**2).sum(axis=0) ** 0.5
-        else:
-            # Average data within entire ROI for each frame
-            data = data.mean(axis=max(axes)).mean(axis=min(axes))
-            xvals = self.tVals
-
-        # Handle multi-channel data
-        if data.ndim == 1:
-            plots = [(xvals, data, 'w')]
-        if data.ndim == 2:
-            if data.shape[1] == 1:
-                colors = 'w'
             else:
-                colors = 'rgbw'
-            plots = []
-            for i in range(data.shape[1]):
-                d = data[:,i]
-                plots.append((xvals, d, colors[i]))
+                # Average data within entire ROI for each frame
+                data = data.mean(axis=max(axes)).mean(axis=min(axes))
+                xvals = self.tVals
 
-        # Update plot line(s)
-        while len(plots) < len(self.roiCurves):
-            c = self.roiCurves.pop()
-            c.scene().removeItem(c)
-        while len(plots) > len(self.roiCurves):
-            self.roiCurves.append(self.ui.roiPlot.plot())
-        for i in range(len(plots)):
-            x, y, p = plots[i]
-            self.roiCurves[i].setData(x, y, pen=p)
+            #print data.ndim
+
+            # Handle multi-channel data
+            if data.ndim == 1:
+                plots = [(xvals, data, 'w')]
+            if data.ndim == 2:
+                if data.shape[1] == 1:
+                    colors = 'w'
+                else:
+                    colors = 'rgbw'
+                plots = []
+                for i in range(data.shape[1]):
+                    d = data[:,i]
+                    plots.append((xvals, d, colors[i]))
+
+            while len(plots) < len(r['roiCurves']):
+                c = r['roiCurves'].pop()
+                c.scene().removeItem(c)
+            while len(plots) > len(r['roiCurves']):
+                r['roiCurves'].append(self.ui.roiPlot.plot())
+            for i in range(len(plots)):
+                x, y, p = plots[i]
+                r['roiCurves'][i].setData(x, y, pen=r['pen'])
+
+            # Update plot line(s)
+            #while len(plots) < len(self.roiCurves):
+            #    c = self.roiCurves.pop()
+            #    c.scene().removeItem(c)
+            #while len(plots) > len(self.roiCurves):
+            #    self.roiCurves.append(self.ui.roiPlot.plot())
+            #for i in range(len(plots)):
+            #    x, y, p = plots[i]
+            #    self.roiCurves[i].setData(x, y, pen=r['pen'])
 
     def quickMinMax(self, data):
         """
