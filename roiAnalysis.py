@@ -27,13 +27,13 @@ win.show()
 win.setWindowTitle('pyqtgraph : augmented ImageView')
 
 ## Create strcutured 3D data
-decay = np.exp(-np.linspace(0,2,100))[:,np.newaxis,np.newaxis]
-data = np.ones((100,200,200))
+decay = np.exp(-np.linspace(0,2,10))[:,np.newaxis,np.newaxis]
+data = np.ones((10,20,20))
 data += 2
-data[:,:100,:100] = 1
-data[:,100:,:100] = 2
-data[:,:100,100:] = 3
-data[:,100:,100:] = 4
+data[:,:10,:10] = 1
+data[:,10:,:10] = 2
+data[:,:10,10:] = 3
+data[:,10:,10:] = 4
 
 data = data * decay
 

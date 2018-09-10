@@ -441,12 +441,12 @@ class ImageView(QtGui.QWidget):
             if r['roi'].freeHandleMoved:
                 print 'freehandlemoved yes'
 
-        print hover, self.view.sceneBoundingRect().contains(posClick)
+        #print hover, self.view.sceneBoundingRect().contains(posClick)
         if (evt.buttons() == QtCore.Qt.MiddleButton) and (self.view.sceneBoundingRect().contains(posClick)) and (not hover):
-            print 'yes'
+            #print 'yes'
             posClick= evt.pos()
             mousePointC = self.view.mapSceneToView(posClick)
-            print 'mousePointC : ', mousePointC
+            #print 'mousePointC : ', mousePointC
             self.addROI(mousePointC)
 
     def addROI(self,loc):
@@ -454,7 +454,7 @@ class ImageView(QtGui.QWidget):
         center = loc
         size = [20, 20]
         #pts = [center, center + Point(0, size[1]), center + Point(size[1], size[0]), center + Point(size[0], 0)]
-        pts = [[0,0],[0,10],[10,10],[10,0]]
+        pts = [[0,0],[0,2],[2,2],[2,0]]
         #roi = RectROI(loc,size,pen=pen, removable=True) #PolyLineROI(pts, pen=pen, closed=True, removable=True)
         roi = PolyLineROI(pts, pos=loc,pen=pen, closed=True, removable=True)
         #roi.setZValue(20)
@@ -693,21 +693,23 @@ class ImageView(QtGui.QWidget):
             #    # roiPlot.removeItem(r['plot'])
             #    self.ROIs.remove(r)
             #    break
-            data, coords = r['roi'].getArrayRegion(image.view(np.ndarray), self.imageItem, axes, returnMappedCoords=True)
+            data, coords = r['roi'].getArrayRegion(image.view(np.ndarray), self.imageItem, axes,returnMappedCoords=True,defaultValue=np.nan)
             #data = r['roi'].getArrayRegion(image.view(np.ndarray), self.imageItem, axes, returnMappedCoords=True)
+            #print np.shape(data), data
             if data is None:
                 return
             #print 'coords :', coords
             # Convert extracted data into 1D plot data
             if self.axes['t'] is None:
                 # Average across y-axis of ROI
-                data = data.mean(axis=axes[1])
+                data = np.nanmean(data,axis=axes[1])
                 coords = coords[:,:,0] - coords[:,0:1,0]
                 xvals = (coords**2).sum(axis=0) ** 0.5
 
             else:
                 # Average data within entire ROI for each frame
-                data = data.mean(axis=max(axes)).mean(axis=min(axes))
+                #data = np.nanmean(data,axis=max(axes)).nanmean(axis=min(axes))
+                data = np.nanmean(np.nanmean(data,axis=max(axes)),axis=min(axes))
                 xvals = self.tVals
 
             #print data.ndim

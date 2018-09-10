@@ -2050,11 +2050,12 @@ class PolyLineROI(ROI):
         Return the result of ROI.getArrayRegion(), masked by the shape of the 
         ROI. Values outside the ROI shape are set to 0.
         """
+        #print 'polyLine'
         br = self.boundingRect()
         if br.width() > 1000:
             raise Exception()
         sliced, coords = ROI.getArrayRegion(self, data, img, axes=axes, fromBoundingRect=True, **kwds)
-        #print len(sliced), axes[0], axes[1]
+        #print np.shape(sliced), sliced # len(sliced), axes[0], axes[1]
         if img.axisOrder == 'col-major':
             mask = self.renderShapeMask(sliced.shape[axes[0]], sliced.shape[axes[1]])
             #mask = self.renderShapeMask(sliced[axes[0]-1], sliced[axes[1]-1])
@@ -2062,7 +2063,11 @@ class PolyLineROI(ROI):
             mask = self.renderShapeMask(sliced.shape[axes[1]], sliced.shape[axes[0]])
             #mask = self.renderShapeMask(sliced[axes[1]-1], sliced[axes[0]-1])
             mask = mask.T
-            
+
+        # convert all '0's in the mask to another default value specified by kwds['defaultValue']
+        if kwds['defaultValue']:
+            mask[mask==0.]=kwds['defaultValue']
+            #print np.shape(mask), mask
         # reshape mask to ensure it is applied to the correct data axes
         shape = [1] * data.ndim
         shape[axes[0]] = sliced.shape[axes[0]]
